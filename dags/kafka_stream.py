@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
-# from airflow import DAG
-# from airflow.operators.python import PythonOperator
+from airflow import DAG
+from airflow.operators.python import PythonOperator
 import json
 import requests
+from kafka import KafkaProducer
+import time
 
 default_args = {
     'owner': 'redone',
@@ -35,23 +37,33 @@ def format_data(res):
 
 
 def stream_data():
-    res = get_data()
-    res = format_data(res)
-    print(json.dumps(res, indent=3))
-    
+
+    producer = KafkaProducer(
+        bootstrap_servers='broker:9092',
+        max_block_ms=5000
+    )        
+
+    current_time = time.time()
+    while True:
+        if time.time() > current_time + 60: #1 minute
+            break
+
+        res = get_data()
+        res = format_data(res)
+        producer.send('users_created', json.dumps(res).encode('utf-8'))
     
     
 
-# with DAG(
-#     'user_automation',
-#     default_args=default_args,
-#     schedule_interval='@daily',
-#     catchup=False,
-# ) as dag:
-#     streaming_task = PythonOperator(
-#         task_id='streaming_task',
-#         python_callable=stream_data,
-#     )
+with DAG(
+    'user_automation_v1',
+    default_args=default_args,
+    schedule='@daily',
+    catchup=False,
+) as dag:
+    streaming_task = PythonOperator(
+        task_id='streaming_task',
+        python_callable=stream_data,
+    )
 
     
-stream_data()
+    streaming_task
